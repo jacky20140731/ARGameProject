@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 
 import android.app.Activity;
 import android.content.Context;
@@ -19,11 +20,19 @@ import com.baidu.location.LocationClient;
 import com.baidu.location.LocationClientOption;
 import com.baidu.mapapi.map.BaiduMap;
 import com.baidu.mapapi.map.MapStatus;
+import com.baidu.mapapi.map.MapStatusUpdate;
 import com.baidu.mapapi.map.MapStatusUpdateFactory;
 import com.baidu.mapapi.map.MapView;
+import com.baidu.mapapi.map.MyLocationConfiguration;
+import com.baidu.mapapi.map.MarkerOptions.MarkerAnimateType;
 import com.baidu.mapapi.map.MyLocationConfiguration.LocationMode;
 import com.baidu.mapapi.map.MyLocationData;
 import com.baidu.mapapi.model.LatLng;
+import com.baidu.mapapi.search.core.RouteNode;
+import com.baidu.mapapi.search.route.PlanNode;
+import com.baidu.mapapi.search.route.WalkingRouteLine;
+import com.baidu.mapapi.search.route.WalkingRouteLine.WalkingStep;
+import com.idealsee.search.RoutePlanDemo;
 
 /**
  * 演示MapView的基本用法
@@ -36,20 +45,92 @@ public class BaseMapDemo extends Activity {
 	private BaiduMap mBaiduMap;
 	LocationClient mLocClient;
 	public MyLocationListenner myListener = new MyLocationListenner();
-	private LocationMode mCurrentMode;
 	boolean isFirstLoc = true; // 是否首次定位
+
+	Button refreshButton;
+	Button flushButton;
+	Button locateButton;
+
+	// 目前先暂时使用四个朝向，获取以自己为中心点，东南西北各一个朝向的步行街道路线图
+	RoutePlanDemo[] routePlanDemo = new RoutePlanDemo[4];
+	// 偏移的经纬度的单位
+	float mRange = 0.002f;
+	// 添加覆盖物
+	OverlayDemo overlayDemo;
+	Thread overlayMove;
+	OverlayAnimationUtil util;
 
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_basemap);
 		initView(this);
+		overlayDemo = new OverlayDemo();
+		overlayDemo.init(this, mMapView, mBaiduMap);
 	}
 
 	// 初始化View
 	public void initView(Context context) {
 		MapView.setMapCustomEnable(true);
 		setMapCustomFile(this);
+		refreshButton = (Button) findViewById(R.id.refresh);
+		refreshButton.setOnClickListener(new Button.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				LatLng ll = mBaiduMap.getMapStatus().target;
+				PlanNode stNode = PlanNode.withLocation(ll);
+				PlanNode enNode = PlanNode.withLocation(new LatLng(ll.latitude,
+						ll.longitude + mRange));
+				routePlanDemo[0].searchProcess(stNode, enNode, 2);
+
+				stNode = PlanNode.withLocation(ll);
+				enNode = PlanNode.withLocation(new LatLng(ll.latitude,
+						ll.longitude - mRange));
+				routePlanDemo[1].searchProcess(stNode, enNode, 2);
+
+				stNode = PlanNode.withLocation(ll);
+				enNode = PlanNode.withLocation(new LatLng(ll.latitude + mRange,
+						ll.longitude));
+				routePlanDemo[2].searchProcess(stNode, enNode, 2);
+
+				stNode = PlanNode.withLocation(ll);
+				enNode = PlanNode.withLocation(new LatLng(ll.latitude - mRange,
+						ll.longitude));
+				routePlanDemo[3].searchProcess(stNode, enNode, 2);
+			}
+		});
+		flushButton = (Button) findViewById(R.id.flush);
+		flushButton.setOnClickListener(new Button.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				RouteNode node = routePlanDemo[0].route.getStarting();
+				overlayDemo.addOverlay(node, MarkerAnimateType.drop);
+				util = new OverlayAnimationUtil();
+				util.init(overlayDemo.mMarkerA,
+						routePlanDemo[0].route.getAllStep());
+				overlayMove = new Thread(util);
+				overlayMove.start();
+			}
+		});
+
+		locateButton = (Button) findViewById(R.id.locate);
+		locateButton.setOnClickListener(new Button.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				if (locateButton.getText().equals("normal")) {
+					locateButton.setText("locate");
+					mBaiduMap
+							.setMyLocationConfigeration(new MyLocationConfiguration(
+									LocationMode.NORMAL, true, null));
+				} else if (locateButton.getText().equals("locate")) {
+					locateButton.setText("normal");
+					mBaiduMap
+							.setMyLocationConfigeration(new MyLocationConfiguration(
+									LocationMode.FOLLOWING, true, null));
+				}
+			}
+		});
+
 		Button rButton = (Button) findViewById(R.id.returnMainButton);
 
 		rButton.setOnClickListener(new Button.OnClickListener() {
@@ -74,7 +155,7 @@ public class BaseMapDemo extends Activity {
 		option.setScanSpan(1000);
 		mLocClient.setLocOption(option);
 		mLocClient.start();
-		Log.d(LTAG, ">>>" + mLocClient.getAccessKey());
+
 	}
 
 	// 设置个性化地图config文件路径
@@ -138,6 +219,10 @@ public class BaseMapDemo extends Activity {
 		// activity 销毁时同时销毁地图控件
 		mMapView.onDestroy();
 		MapView.setMapCustomEnable(false);
+		if (util != null)
+			util.stop();
+		if (overlayMove != null)
+			overlayMove.interrupt();
 	}
 
 	/**
@@ -159,12 +244,25 @@ public class BaseMapDemo extends Activity {
 			mBaiduMap.setMyLocationData(locData);
 			if (isFirstLoc) {
 				isFirstLoc = false;
+
+				// MapStatus mMapStatus = new MapStatus.Builder(
+				// mBaiduMap.getMapStatus()).zoom(19.5f).overlook(-80)
+				// .build();
+				// MapStatusUpdate msu = MapStatusUpdateFactory
+				// .newMapStatus(mMapStatus);
+				// mBaiduMap.animateMapStatus(msu);
+
 				LatLng ll = new LatLng(location.getLatitude(),
 						location.getLongitude());
 				MapStatus.Builder builder = new MapStatus.Builder();
-				builder.target(ll).zoom(18.0f);
+				builder.target(ll).zoom(19.5f).overlook(-80);
 				mBaiduMap.animateMapStatus(MapStatusUpdateFactory
 						.newMapStatus(builder.build()));
+
+				for (int i = 0; i < routePlanDemo.length; i++) {
+					routePlanDemo[i] = new RoutePlanDemo();
+					routePlanDemo[i].init(mMapView, mBaiduMap);
+				}
 			}
 		}
 
