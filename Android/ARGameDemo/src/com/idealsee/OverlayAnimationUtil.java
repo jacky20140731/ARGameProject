@@ -1,16 +1,14 @@
 package com.idealsee;
 
-import java.security.Principal;
 import java.util.ArrayList;
 import java.util.List;
 
 import android.util.Log;
-import android.view.ViewDebug.FlagToString;
-import android.widget.ImageView;
 
 import com.baidu.mapapi.map.Marker;
 import com.baidu.mapapi.model.LatLng;
 import com.baidu.mapapi.search.route.WalkingRouteLine.WalkingStep;
+import com.idealsee.math.Vector3;
 
 /*
  * @desc   : 覆盖物的基础动画显示 
@@ -19,32 +17,37 @@ import com.baidu.mapapi.search.route.WalkingRouteLine.WalkingStep;
  * 
  */
 public class OverlayAnimationUtil implements Runnable {
-	Marker marker;
-	ImageView imageView;
-	float fromXDelta, toXDelta, fromYDelta, toYDelta;
-	public boolean moving = false;
+	public boolean mStartMoving = false;
 	List<LatLng> path = new ArrayList<LatLng>();
-
-	int currentIndex = 0;
-	boolean mIncrease = true;
-
-	public void init(ImageView imageView, float fromXDelta, float toXDelta,
-			float fromYDelta, float toYDelta) {
-		moving = true;
-		this.imageView = imageView;
-		this.fromXDelta = fromXDelta;
-		this.toXDelta = toXDelta;
-		this.fromYDelta = fromYDelta;
-		this.toYDelta = toYDelta;
-	}
+	public List<Marker> marker = new ArrayList<Marker>();
+	public List<Boolean> moving = new ArrayList<Boolean>();
+	public List<Integer> currentIndex = new ArrayList<Integer>();
+	public List<Boolean> mIncrease = new ArrayList<Boolean>();
 
 	public void init(Marker marker, List<WalkingStep> list) {
-		moving = true;
-		this.marker = marker;
+		mStartMoving = true;
+		moving.add(true);
+		this.marker.add(marker);
 		for (int i = 0; i < list.size(); i++) {
 			path.addAll(list.get(i).getWayPoints());
 		}
-		Log.d("OverlayAnimationUtil: size :", path.size() + "");
+		currentIndex.add(0);
+		mIncrease.add(true);
+		marker.setPosition(path.get(0));
+	}
+
+	public void addMarker(Marker marker) {
+		this.marker.add(marker);
+		moving.add(true);
+		currentIndex.add(0);
+		mIncrease.add(true);
+		marker.setPosition(path.get(0));
+	}
+
+	public void addWalkStep(List<WalkingStep> list) {
+		for (int i = 0; i < list.size(); i++) {
+			path.addAll(list.get(i).getWayPoints());
+		}
 	}
 
 	@Override
@@ -52,21 +55,26 @@ public class OverlayAnimationUtil implements Runnable {
 		// Animation ani = new TranslateAnimation(fromXDelta, toXDelta,
 		// fromYDelta, toYDelta);
 		try {
-			while (moving) {
-				Thread.sleep(100);
-				if (currentIndex == path.size()-1) {
-					mIncrease = false;
+			while (mStartMoving) {
+				Thread.sleep(20);
+				for (int i = 0; i < marker.size(); i++) {
+					if (currentIndex.get(i) == path.size() - 1) {
+						mIncrease.set(i, false);
+					}
+					if (currentIndex.get(i) == 0) {
+						mIncrease.set(i, true);
+					}
+					if (equalslatlng(marker.get(i).getPosition(),
+							path.get(currentIndex.get(i)))) {
+						if (mIncrease.get(i))
+							currentIndex.set(i, currentIndex.get(i) + 1);
+						else
+							currentIndex.set(i, currentIndex.get(i) - 1);
+					}
+					marker.get(i).setPosition(
+							moveBetweenLatlng(marker.get(i).getPosition(),
+									path.get(currentIndex.get(i)), 0.1f));
 				}
-				if (currentIndex == 0) {
-					mIncrease = true;
-				}
-				marker.setPosition(path.get(currentIndex));
-//				Log.d("OverlayAnimationUtil: currentIndex: ", currentIndex + ","
-//						+ path.get(currentIndex).toString());
-				if (mIncrease)
-					currentIndex++;
-				else
-					currentIndex--;
 			}
 		} catch (Exception e) {
 			System.err.println(e.toString());
@@ -75,6 +83,26 @@ public class OverlayAnimationUtil implements Runnable {
 
 	public void stop() {
 		Log.d("OverlayAnimationUtil:", "stop");
-		moving = false;
+		mStartMoving = false;
+	}
+
+	public LatLng moveBetweenLatlng(LatLng from, LatLng to, float delta) {
+		Vector3 f = new Vector3((float) from.latitude, (float) from.longitude);
+		Vector3 t = new Vector3((float) to.latitude, (float) to.longitude);
+		Vector3 r = Vector3.Lerp(f, t, delta);
+		LatLng result = new LatLng(r.x, r.y);
+		return result;
+	}
+
+	public boolean equalslatlng(LatLng l1, LatLng l2) {
+		double rat = 0.0001d;
+		// Log.d("OverlayAnimationUtil:",
+		// "" + marker.getPosition() + ",curentIndex:" + currentIndex
+		// + ",L1:" + (Math.abs(l1.latitude - l2.latitude))
+		// + ",L2:" + (Math.abs(l1.longitude - l2.longitude)));
+		if (Math.abs(l1.latitude - l2.latitude) <= rat)
+			if (Math.abs(l1.longitude - l2.longitude) <= rat)
+				return true;
+		return false;
 	}
 }

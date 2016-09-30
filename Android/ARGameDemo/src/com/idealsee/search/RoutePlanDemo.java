@@ -62,7 +62,7 @@ public class RoutePlanDemo implements BaiduMap.OnMapClickListener,
 		this.mBaidumap = mBaidumap;
 		// 初始化地图
 		// 地图点击事件处理
-		this.mBaidumap.setOnMapClickListener(this);
+//		this.mBaidumap.setOnMapClickListener(this);
 		// 初始化搜索模块，注册事件监听
 		mSearch = RoutePlanSearch.newInstance();
 		mSearch.setOnGetRoutePlanResultListener(this);

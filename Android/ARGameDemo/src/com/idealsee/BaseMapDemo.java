@@ -97,6 +97,12 @@ public class BaseMapDemo extends Activity {
 				enNode = PlanNode.withLocation(new LatLng(ll.latitude - mRange,
 						ll.longitude));
 				routePlanDemo[3].searchProcess(stNode, enNode, 2);
+
+				if (util != null)
+					util.stop();
+				util = null;
+				if (overlayMove != null)
+					overlayMove.interrupt();
 			}
 		});
 		flushButton = (Button) findViewById(R.id.flush);
@@ -104,12 +110,19 @@ public class BaseMapDemo extends Activity {
 			@Override
 			public void onClick(View v) {
 				RouteNode node = routePlanDemo[0].route.getStarting();
-				overlayDemo.addOverlay(node, MarkerAnimateType.drop);
-				util = new OverlayAnimationUtil();
-				util.init(overlayDemo.mMarkerA,
-						routePlanDemo[0].route.getAllStep());
-				overlayMove = new Thread(util);
-				overlayMove.start();
+				overlayDemo.addOverlay(node, MarkerAnimateType.none);
+				if (util == null) {
+					util = new OverlayAnimationUtil();
+					util.init(overlayDemo.mMarkerA,
+							routePlanDemo[0].route.getAllStep());
+					for (int i = 1; i < routePlanDemo.length; i++) {
+						util.addWalkStep(routePlanDemo[i].route.getAllStep());
+					}
+					overlayMove = new Thread(util);
+					overlayMove.start();
+				} else {
+					util.addMarker(overlayDemo.mMarkerA);
+				}
 			}
 		});
 
